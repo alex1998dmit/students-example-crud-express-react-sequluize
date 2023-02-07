@@ -1,14 +1,55 @@
+const { paginate, getOffset, getNextPage, getPreviousPage } = require('../utlils/paginate');
+const { Op } = require('sequelize');
 const Book = require('../models').Book;
 
 const to = require('await-to-js').default
 
 module.exports = {
   getAll: async (req, res) => {
-    const [err, books] = await to(Book.findAll({
-        include: ["Author", "PublishHouse"]
-    }));
-    if (err) throw err;
-    return res.status(200).send({ books })
+    const {
+      title_book,
+      pages,
+      AuthorId,
+      PublishHouseId,
+      ordering,
+      orderDirection,
+    } = req.query;
+    // console.log(search);
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const page = parseInt(req.query.page, 10) || 1;
+    let order = [];
+    
+    if (ordering) {
+      order = [
+        [ordering, orderDirection ?? 'ASC']
+      ]      
+    }
+
+    let {count, rows} = await Book.findAndCountAll({
+      offset: getOffset(page, limit),
+      limit: limit,
+      include: ["Author", "PublishHouse"],
+      order,
+      where: {
+        ...(AuthorId && { AuthorId }),
+        ...(PublishHouseId && { PublishHouseId }),
+        ...(title_book && {
+          title_book: {
+            [Op.substring]: title_book,
+          }
+        })
+      }        
+    });
+
+    const resp = {
+      previousPage: getPreviousPage(page),
+      currentPage: page,
+      nextPage: getNextPage(page, limit, count),
+      total: count,
+      limit: limit,
+      data: rows
+    }
+    return res.status(200).send(resp)
   },
   create: async (req, res) => {
     const [errCreate, newBook] = await to(Book.create({
